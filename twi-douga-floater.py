@@ -135,7 +135,7 @@ class RequestClient(threading.Thread):
 
                 random_http_proxy = random.choice(self.conf.http_proxies)
                 proxy_dict = {
-                    "http": f"http://{random_http_proxy}",
+                    "http": f"sock5://user:pass@{random_http_proxy}",
                 }
                 key, value = self.get_random_twitter_video_pairs()
 
@@ -174,7 +174,7 @@ class RequestClient(threading.Thread):
         return headers, data
 
     def get_random_cookies(self):
-        return {"_ga": f"GA1.2.{self.conf.rrd(9)}.{self.conf.rrd(10)}", "_gid": f"GA1.2.{self.conf.rrd(9)}.{self.conf.rrd(10)}", "_gat": "1", "adr_id": f"{self.conf.random_name(48)}"}
+        return {"_ga": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gid": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gat": "1", "adr_id": f"{self.conf.random_name(48)}"}
 
     def get_random_twitter_video_pairs(self):
         return random.choice(list(self.conf.twitter_videos.items()))
