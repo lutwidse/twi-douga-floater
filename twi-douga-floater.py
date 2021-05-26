@@ -106,11 +106,11 @@ class ObserverClient(threading.Thread):
         while True:
             time.sleep(10)
             req_count = self.conf.get_req_count()
-            print(f"{self.conf.get_CLIENT_TEXT()} | リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
+            print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
 
             if (self.conf.get_len_http_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
                 self.conf.set_in_progress(False)
-                print(f"{self.conf.CLIENT_TEXT} | {self.conf.get_CLIENT_TEXT()} | 終了")
+                print(f"{self.conf.CLIENT_TEXT} {self.conf.get_CLIENT_TEXT()} | 終了")
                 input()
                 exit(1)
 
@@ -144,6 +144,9 @@ class RequestClient(threading.Thread):
                 status = resp.status_code
                 if status != 200:
                     self.conf.http_proxies.remove(random_http_proxy)
+                    # blocklist
+                    del self.conf.twitter_videos[key]
+                    print(f"{self.conf.get_CLIENT_TEXT()} ブロック検知: {key}")
 
                 self.set_twitter_videos_count(key)
                 self.conf.set_req_count()
