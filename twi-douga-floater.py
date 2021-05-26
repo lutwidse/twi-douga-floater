@@ -14,7 +14,6 @@ args = parser.parse_args()
 class Config(object):
     def __init__(self):
         self.req_count = 0
-        self.in_progress = True
 
         self.URL = "https://www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
@@ -49,8 +48,6 @@ class Config(object):
     # Getter
     def get_req_count(self):
         return self.req_count
-    def get_in_progress(self):
-        return self.in_progress
     
     def get_len_http_proxies(self):
         return len(self.http_proxies)
@@ -64,8 +61,6 @@ class Config(object):
     # Setter
     def set_req_count(self):
         self.req_count += 1
-    def set_in_progress(self, in_progress):
-        self.in_progress = in_progress
     
     # プロキシ
     def proxy_check(self,proxy):
@@ -109,7 +104,6 @@ class ObserverClient(threading.Thread):
             print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
 
             if (self.conf.get_len_http_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
-                self.conf.set_in_progress(False)
                 print(f"{self.conf.CLIENT_TEXT} {self.conf.get_CLIENT_TEXT()} | 終了")
                 input()
                 exit(1)
@@ -121,7 +115,7 @@ class RequestClient(threading.Thread):
         self.conf = conf
 
     def run(self):
-        while True and self.conf.get_in_progress():
+        while self.conf.get_len_http_proxies() and self.conf.get_len_twitter_videos():
             try:
                 time.sleep(random.randint(1, self.conf.DELAY))
 
