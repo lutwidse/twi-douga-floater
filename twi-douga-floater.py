@@ -20,6 +20,7 @@ class Config(object):
         self.PROXY_TIMEOUT = 10
         self.DELAY = 10
         self.TARGET_VIEWS = 100
+        self.BLOCKLISTED = 3
 
         self.proxies = []
         self._temp_proxies = []
@@ -59,7 +60,7 @@ class Config(object):
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
-                self.twitter_videos[l] = 0
+                self.twitter_videos[l] = [0, 0]
             f.close()
             self.LEN_TWITTER_VIDEOS = len(self.twitter_videos)
 
@@ -151,7 +152,7 @@ class ObserverClient(threading.Thread):
             print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.LEN_PROXIES - self.conf.get_len_proxies()}個 ]")
 
             if (self.conf.get_len_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
-                print(f"{self.conf.CLIENT_TEXT} {self.conf.get_CLIENT_TEXT()} | 終了")
+                print(f"{self.conf.get_CLIENT_TEXT()} 終了")
                 input()
                 exit(1)
 
@@ -171,8 +172,10 @@ class RequestClient(threading.Thread):
                     "http": random_proxy,
                 }
 
-                key, value = self.get_random_twitter_video_pairs()
-                if value > self.conf.TARGET_VIEWS:
+                key, values = self.get_random_twitter_video_pairs()
+                videos_count = values[0]
+                restriction_count = values[1]
+                if videos_count > self.conf.TARGET_VIEWS:
                     print(f"{self.conf.CLIENT_TEXT} 完了: {key}")
                     self.conf.del_twitter_video(key)
                     continue
@@ -185,6 +188,12 @@ class RequestClient(threading.Thread):
                 status = resp.status_code
                 if status != 200:
                     self.conf.del_proxy(random_proxy)
+                    self.set_twitter_videos_restriction_count(key)
+                    if self.conf.BLOCKLISTED <= restriction_count:
+                        print(f"{self.conf.get_CLIENT_TEXT()} 動画のブロックを検知しました: {key}")
+                        self.conf.del_twitter_video(key)
+                        continue
+                    continue
 
                 self.set_twitter_videos_count(key)
                 self.conf.set_req_count()
@@ -210,14 +219,19 @@ class RequestClient(threading.Thread):
         return {"_ga": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gid": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gat": "1", "adr_id": f"{self.conf.random_name(48)}"}
 
     def get_random_twitter_video_pairs(self):
-        return random.choice(list(self.conf.twitter_videos.items()))
+        return random.choice(list(list(self.conf.twitter_videos.items())))
 
     def get_random_proxy(self):
         return random.choice(self.conf.proxies)
 
     def set_twitter_videos_count(self, video):
         self.lock.acquire()
-        self.conf.twitter_videos[video] += 1
+        self.conf.twitter_videos[video][0] += 1
+        self.lock.release()
+
+    def set_twitter_videos_restriction_count(self, video):
+        self.lock.acquire()
+        self.conf.twitter_videos[video][1] += 1
         self.lock.release()
 
 if __name__ == "__main__":
