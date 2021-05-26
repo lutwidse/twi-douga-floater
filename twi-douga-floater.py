@@ -1,7 +1,6 @@
 import requests, urllib.request, urllib.error, socket
 from requests import Timeout
 import random, string, datetime, time, threading
-from queue import Queue
 from fake_useragent import UserAgent
 import argparse
 from pathlib import Path
@@ -107,7 +106,7 @@ class ObserverClient(threading.Thread):
         while True:
             time.sleep(10)
             req_count = self.conf.get_req_count()
-            print(f"{self.conf.CLIENT_TEXT} | {self.conf.get_CLIENT_TEXT()} | リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
+            print(f"{self.conf.get_CLIENT_TEXT()} | リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
 
             if (self.conf.get_len_http_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
                 self.conf.set_in_progress(False)
