@@ -57,10 +57,16 @@ class Config(object):
 
     def get_CLIENT_TEXT(self):
         return f"{self.CLIENT_TEXT} | {self.get_now()} |"
+
+    def progress_check(self):
+        return self.get_len_http_proxies() and self.get_len_twitter_videos()
     
     # Setter
     def set_req_count(self):
         self.req_count += 1
+
+    def del_twitter_videos(self, key):
+        self.twitter_videos.pop(key)
     
     # プロキシ
     def proxy_check(self,proxy):
@@ -98,7 +104,7 @@ class ObserverClient(threading.Thread):
         self.conf = conf
 
     def run(self):
-        while True:
+        while self.conf.progress_check():
             time.sleep(10)
             req_count = self.conf.get_req_count()
             print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_http_proxies()}個 | 規制:{self.conf.LEN_HTTP_PROXIES - self.conf.get_len_http_proxies()}個 ]")
@@ -115,7 +121,7 @@ class RequestClient(threading.Thread):
         self.conf = conf
 
     def run(self):
-        while self.conf.get_len_http_proxies() and self.conf.get_len_twitter_videos():
+        while self.conf.progress_check():
             try:
                 time.sleep(random.randint(1, self.conf.DELAY))
 
@@ -127,7 +133,7 @@ class RequestClient(threading.Thread):
 
                 if value > self.conf.TARGET_VIEWS:
                     print(f"{self.conf.CLIENT_TEXT} 完了: {key}")
-                    del self.conf.twitter_videos[key]
+                    self.conf.del_twitter_videos(key)
                     continue
                 
                 headers, data = self.get_request_context(key)
@@ -139,7 +145,7 @@ class RequestClient(threading.Thread):
                 if status != 200:
                     self.conf.http_proxies.remove(random_http_proxy)
                     # blocklist
-                    del self.conf.twitter_videos[key]
+                    self.conf.del_twitter_videos(key)
                     print(f"{self.conf.get_CLIENT_TEXT()} ブロック検知: {key}")
 
                 self.set_twitter_videos_count(key)
@@ -161,12 +167,13 @@ class RequestClient(threading.Thread):
         headers = {"Connection": "close", "Cache-Control": "max-age=0", "Upgrade-Insecure-Requests": "1", "Origin": "https://www.nurumayu.net", "Content-Type": f"multipart/form-data; boundary=----WebKitFormBoundary{random_boundary}", "User-Agent": self.conf.random_ua(), "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-User": "?1", "Sec-Fetch-Dest": "document", "Referer": "https://www.nurumayu.net/twidouga/gettwi.php", "Accept-Encoding": "gzip, deflate", "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"}
         data = f"------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"param\"\r\n\r\n{url}\r\n------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"exec\"\r\n\r\n\xe6\x8a\xbd\xe5\x87\xba\r\n------WebKitFormBoundary{random_boundary}--\r\n"
         return headers, data
+
     def get_random_twitter_video_pairs(self):
         return random.choice(list(self.conf.twitter_videos.items()))
 
     def set_twitter_videos_count(self, video):
         self.lock.acquire()
-        self.conf.twitter_videos[video] = self.conf.twitter_videos.get(video, 0) + 1
+        self.conf.twitter_videos[video] += 1
         self.lock.release()
 
 if __name__ == "__main__":
