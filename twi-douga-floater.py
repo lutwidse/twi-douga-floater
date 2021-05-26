@@ -13,56 +13,63 @@ args = parser.parse_args()
 
 class Config(object):
     def __init__(self):
-        self.req_count = 0
-
         self.URL = "https://www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self.PROXY_TIMEOUT = 10
         self.DELAY = 10
         self.TARGET_VIEWS = 100
-        self.BLOCKLISTED = 3
+        self.BLOCKLISTED_THRESHOLD = 3
+
+        self.req_count = 0
+
+        # TODO: Those two variables are should uppercased if they could be. on the purpose of using it as a constant.
+        self.len_proxies = 0
+        self.len_twitter_videos = 0
 
         self.proxies = []
-        self._temp_proxies = []
+        self.twitter_videos = {}
+
+        # プロキシ
+        temp_proxies = []
         with open(args.proxies) as f:
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
-                self._temp_proxies.append(l)
+                temp_proxies.append(l)
             f.close()
 
         print(f"{self.get_CLIENT_TEXT()} プロキシを検証中…")
 
-        #socks5
+        # socks5
         pt = []
 
-        for proxy in self._temp_proxies:
-            pt.append(threading.Thread(target=self.proxy_check_socks5, args=(proxy,)))
-
+        for proxy in temp_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_socks5, args=(proxy,)))
         for t in pt:t.start()
         for t in pt:t.join()
 
         pt.clear()
+        for p in self.proxies:
+            if p in temp_proxies:
+                temp_proxies.remove(p)
 
-        #http
-        for proxy in self._temp_proxies:
-            pt.append(threading.Thread(target=self.proxy_check_http, args=(proxy,)))
-        
+        # http
+        for proxy in temp_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_http, args=(proxy,)))  
         for t in pt:t.start()
         for t in pt:t.join()
 
-        self.LEN_PROXIES = len(self.proxies)
-        print(f"{self.get_CLIENT_TEXT()} 検証完了 | 有効なプロキシ: {self.LEN_PROXIES}個")
+        self.update_len_proxies()
+        print(f"{self.get_CLIENT_TEXT()} 検証完了 | 有効なプロキシ: {self.get_len_proxies()}個")
         
         # 動画
-        self.twitter_videos = {}
         with open(args.videos) as f:
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
                 self.twitter_videos[l] = [0, 0]
             f.close()
-            self.LEN_TWITTER_VIDEOS = len(self.twitter_videos)
+            self.update_len_twitter_videos()
 
     # Getter
     def get_req_count(self):
@@ -90,15 +97,22 @@ class Config(object):
 
     def del_twitter_video(self, key):
         self.twitter_videos.pop(key)
+
+    # Updater
+    def update_len_proxies(self):
+        self.len_proxies = len(self.len_proxies)
+
+    def update_len_twitter_videos(self):
+        self.len_twitter_videos = len(self.twitter_videos)
     
     # プロキシ
-    def proxy_check_socks5(self,proxy):
+    def _proxy_check_socks5(self,proxy):
         try:
             ip, port = proxy.split(":")
             packet = struct.pack('BBB', 0x05, 0x01, 0x00)
             
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(10)
+            s.settimeout(self.PROXY_TIMEOUT)
             s.connect((ip, int(port)))
             s.sendall(packet)
             
@@ -106,12 +120,11 @@ class Config(object):
             version, auth = struct.unpack('BB', data)
             if(version == 5 and auth == 0):
                 self.proxies.append(f"socks5://{proxy}")
-                self._temp_proxies.remove(proxy)
                 s.close()
         except Exception:
             pass
 
-    def proxy_check_http(self,proxy):
+    def _proxy_check_http(self,proxy):
         try:
             proxy_handler = urllib.request.ProxyHandler({"http": f"{proxy}"})
             opener = urllib.request.build_opener(proxy_handler)
@@ -149,7 +162,7 @@ class ObserverClient(threading.Thread):
         while self.conf.progress_check():
             time.sleep(10)
             req_count = self.conf.get_req_count()
-            print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.LEN_PROXIES - self.conf.get_len_proxies()}個 ]")
+            print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.len_twitter_videos * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.len_proxies - self.conf.get_len_proxies()}個 ]")
 
             if (self.conf.get_len_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
                 print(f"{self.conf.get_CLIENT_TEXT()} 終了")
@@ -189,9 +202,10 @@ class RequestClient(threading.Thread):
                 if status != 200:
                     self.conf.del_proxy(random_proxy)
                     self.set_twitter_videos_restriction_count(key)
-                    if self.conf.BLOCKLISTED <= restriction_count:
+                    if self.conf.BLOCKLISTED_THRESHOLD <= restriction_count:
                         print(f"{self.conf.get_CLIENT_TEXT()} 動画のブロックを検知しました: {key}")
                         self.conf.del_twitter_video(key)
+                        self.conf.update_len_twitter_videos()
                         continue
                     continue
 
