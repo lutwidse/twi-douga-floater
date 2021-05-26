@@ -65,6 +65,10 @@ class Config(object):
     def set_req_count(self):
         self.req_count += 1
 
+    # Deleter
+    def del_http_proxies(self, proxy):
+        self.http_proxies.remove(proxy)
+
     def del_twitter_videos(self, key):
         self.twitter_videos.pop(key)
     
@@ -97,6 +101,10 @@ class Config(object):
     def random_name(self, n):
         randlst = [random.choice(string.ascii_letters + string.digits) for _ in range(n)]
         return ''.join(randlst)
+
+    # random range number
+    def rrn(self, n):
+        return random.randrange(9**n, 10**n)
 
 class ObserverClient(threading.Thread):
     def __init__(self, conf):
@@ -139,14 +147,11 @@ class RequestClient(threading.Thread):
                 headers, data = self.get_request_context(key)
                 req = requests.Session()
                 req.max_redirects = 1024
-                resp = req.post(self.conf.URL, headers=headers, data=data, timeout=(5, 10), proxies=proxy_dict)
+                resp = req.post(self.conf.URL, headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(5, 10), proxies=proxy_dict)
                 
                 status = resp.status_code
                 if status != 200:
-                    self.conf.http_proxies.remove(random_http_proxy)
-                    # blocklist
-                    self.conf.del_twitter_videos(key)
-                    print(f"{self.conf.get_CLIENT_TEXT()} ブロック検知: {key}")
+                    self.conf.del_http_proxies(random_http_proxy)
 
                 self.set_twitter_videos_count(key)
                 self.conf.set_req_count()
@@ -154,7 +159,7 @@ class RequestClient(threading.Thread):
             except Timeout:
                 pass
             except requests.ConnectionError:
-                    self.conf.http_proxies.remove(random_http_proxy)
+                    self.conf.del_http_proxies(random_http_proxy)
             except ValueError:
                 pass
             except IndexError:
@@ -167,6 +172,9 @@ class RequestClient(threading.Thread):
         headers = {"Connection": "close", "Cache-Control": "max-age=0", "Upgrade-Insecure-Requests": "1", "Origin": "https://www.nurumayu.net", "Content-Type": f"multipart/form-data; boundary=----WebKitFormBoundary{random_boundary}", "User-Agent": self.conf.random_ua(), "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-User": "?1", "Sec-Fetch-Dest": "document", "Referer": "https://www.nurumayu.net/twidouga/gettwi.php", "Accept-Encoding": "gzip, deflate", "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"}
         data = f"------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"param\"\r\n\r\n{url}\r\n------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"exec\"\r\n\r\n\xe6\x8a\xbd\xe5\x87\xba\r\n------WebKitFormBoundary{random_boundary}--\r\n"
         return headers, data
+
+    def get_random_cookies(self):
+        return {"_ga": f"GA1.2.{self.conf.rrd(9)}.{self.conf.rrd(10)}", "_gid": f"GA1.2.{self.conf.rrd(9)}.{self.conf.rrd(10)}", "_gat": "1", "adr_id": f"{self.conf.random_name(48)}"}
 
     def get_random_twitter_video_pairs(self):
         return random.choice(list(self.conf.twitter_videos.items()))
