@@ -1,11 +1,12 @@
-import requests, urllib.request, urllib.error, socket, struct
+import requests, urllib3.request, urllib3.contrib, socket, socks
 from requests import Timeout
+from urllib3.exceptions import MaxRetryError
 import random, string, datetime, time, threading
 from fake_useragent import UserAgent
 import argparse
 from pathlib import Path
 
-requests.adapters.DEFAULT_RETRIES = 0
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 parser = argparse.ArgumentParser("れ～どめ～")
 parser.add_argument("-tv", "--target_views", help="目標の閲覧数", type=int, required=True)
@@ -19,6 +20,7 @@ class Config(object):
         self.lock = threading.Lock()
         self.URN = "www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
+        self._PROXY_TEST_UA = {"User-agent": "Mozilla/5.0"}
         self.PROXY_TIMEOUT = 10
         self.OBSERVER_DELAY = 10
         self.DELAY = 100
@@ -33,52 +35,57 @@ class Config(object):
         self.twitter_videos = {}
 
         # プロキシ
-        temp_proxies = []
+        unchecked_proxies = []
         with open(args.proxies) as f:
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
-                temp_proxies.append(l)
+                unchecked_proxies.append(l)
             f.close()
 
         print(f"{self.get_CLIENT_TEXT()} プロキシを検証中…")
 
         # TODO:try-exceptを使って簡潔にまとめる、その他の関数も適切にエラー処理を行うようにする
 
-        # socks5
         pt = []
 
-        for proxy in temp_proxies:
-            pt.append(threading.Thread(target=self._proxy_check_socks5, args=(proxy,)))
+        for ip_port in unchecked_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_socks4_socks5, args=("socks4", ip_port,)))
         for t in pt:t.start()
         for t in pt:t.join()
         pt.clear()
 
-        for p in self.proxies:
-            _, ip_port = p.split("://")
-            if ip_port in temp_proxies:
-                temp_proxies.remove(ip_port)
+        print(f"{self.get_CLIENT_TEXT()} 検証完了 [socks4]")
 
-        # http
-        for proxy in temp_proxies:
-            pt.append(threading.Thread(target=self._proxy_check_http, args=(proxy,)))  
+        self._proxy_del_unchecked_proxies(unchecked_proxies)
+
+        for ip_port in unchecked_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_socks4_socks5, args=("socks5", ip_port,)))
         for t in pt:t.start()
         for t in pt:t.join()
         pt.clear()
 
-        for p in self.proxies:
-            _, ip_port = p.split("://")
-            if ip_port in temp_proxies:
-                temp_proxies.remove(ip_port)
+        print(f"{self.get_CLIENT_TEXT()} 検証完了 [socks5]")
 
-        # https
-        for proxy in temp_proxies:
-            pt.append(threading.Thread(target=self._proxy_check_https, args=(proxy,)))  
+        self._proxy_del_unchecked_proxies(unchecked_proxies)
+
+        for ip_port in unchecked_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_socks4_socks5, args=("http", ip_port,)))
         for t in pt:t.start()
         for t in pt:t.join()
         pt.clear()
-        
-        temp_proxies.clear()
+
+        print(f"{self.get_CLIENT_TEXT()} 検証完了 [http]")
+
+        self._proxy_del_unchecked_proxies(unchecked_proxies)
+
+        for ip_port in unchecked_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_socks4_socks5, args=("https", ip_port,)))
+        for t in pt:t.start()
+        for t in pt:t.join()
+        pt.clear()
+
+        print(f"{self.get_CLIENT_TEXT()} 検証完了 [https]")
 
         self.update_len_proxies()
         print(f"{self.get_CLIENT_TEXT()} 検証完了 | 有効なプロキシ: {self.get_len_proxies()}個")
@@ -133,58 +140,40 @@ class Config(object):
         self.len_twitter_videos = len(self.twitter_videos)
     
     # プロキシ
-    def _proxy_check_socks5(self,proxy):
+    def _proxy_check_socks4_socks5(self, scheme, ip_port):
         try:
-            ip, port = proxy.split(":")
-            packet = struct.pack('BBB', 0x05, 0x01, 0x00)
+            proxy = f"{scheme}://{ip_port}"
+            proxy_manager = urllib3.contrib.socks.SOCKSProxyManager(proxy)
+            proxy_manager.request("GET", "http://www.google.com", headers=self._PROXY_TEST_UA, timeout=urllib3.Timeout(connect=self.PROXY_TIMEOUT, read=self.PROXY_TIMEOUT+5))
             
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(self.PROXY_TIMEOUT)
-            s.connect((ip, int(port)))
-            s.sendall(packet)
-            
-            data = s.recv(2)
-            version, auth = struct.unpack('BB', data)
-            if(version == 5 and auth == 0):
-                self.proxies.append(f"socks5://{proxy}")
-                s.close()
+            self.proxies.append(proxy)
         except Exception:
             pass
 
-    def _proxy_check_http(self,proxy):
+    def _proxy_check_http_https(self, scheme, ip_port):
         try:
-            proxy_handler = urllib.request.ProxyHandler({"http": f"http://{proxy}"})
-            opener = urllib.request.build_opener(proxy_handler)
-            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-            urllib.request.install_opener(opener)
-            req=urllib.request.Request("http://www.google.com")
-            urllib.request.urlopen(req, timeout=self.PROXY_TIMEOUT)
+            proxy = f"{scheme}://{ip_port}"
+            proxy_manager = urllib3.ProxyManager(proxy)
+            proxy_manager.request("GET", f"{scheme}://www.google.com", headers=self._PROXY_TEST_UA, timeout=urllib3.Timeout(connect=self.PROXY_TIMEOUT, read=self.PROXY_TIMEOUT+5))
             
-            self.proxies.append(f"http://{proxy}")
+            self.proxies.append(proxy)
         except Exception:
             pass
+
+    def _proxy_del_unchecked_proxies(self, unchecked_proxies):
+        for p in self.proxies:
+            _, ip_port = p.split("://")
+            if ip_port in unchecked_proxies:
+                unchecked_proxies.remove(ip_port)
+
+    def get_now(self):
+        return datetime.datetime.now().strftime("%H:%M:%S")
     
-    def _proxy_check_https(self,proxy):
-        try:
-            proxy_handler = urllib.request.ProxyHandler({"https": f"https://{proxy}"})
-            opener = urllib.request.build_opener(proxy_handler)
-            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-            urllib.request.install_opener(opener)
-            req=urllib.request.Request("https://www.google.com")
-            urllib.request.urlopen(req, timeout=self.PROXY_TIMEOUT)
-            
-            self.proxies.append(f"https://{proxy}")
-        except Exception:
-            pass
-
     def random_ua(self):
         ua = UserAgent()
         user_agent = ua.random
         return user_agent
 
-    def get_now(self):
-        return datetime.datetime.now().strftime("%H:%M:%S")
-        
     def random_name(self, n):
         randlst = [random.choice(string.ascii_letters + string.digits) for _ in range(n)]
         return ''.join(randlst)
@@ -234,19 +223,19 @@ class RequestClient(threading.Thread):
 
                 random_proxy = self.get_random_proxy()
                 protocol, _ = random_proxy.split("://")
-                
-                proxy_dict = {}
-                schema = ""
-                if(protocol == "socks5"):
-                    proxy_dict["http"] = random_proxy
-                    proxy_dict["https"] = random_proxy
-                    schema = random.choice(["http", "https"])
-                elif(protocol == "http"):
-                    proxy_dict["http"] = random_proxy
-                    schema = "http"
-                elif(protocol == "https"):
-                    proxy_dict["https"] = random_proxy
-                    schema = "https"
+
+                proxy_manager = None
+
+                scheme = ""
+                if protocol == "socks4" or protocol == "socks5":
+                    proxy_manager = urllib3.contrib.socks.SOCKSProxyManager(random_proxy)
+                    scheme = "http"
+                elif protocol == "http":
+                    scheme = "http"
+                    proxy_manager = urllib3.ProxyManager(random_proxy)
+                elif protocol == "https":
+                    scheme = "https"
+                    proxy_manager = urllib3.ProxyManager(random_proxy)
 
                 self.conf.lock.acquire()
                 video_url, video_count = self.get_random_twitter_video_pairs()
@@ -255,12 +244,10 @@ class RequestClient(threading.Thread):
                 self.conf.lock.release()
                 
                 headers, data = self.get_request_context(video_url)
-                req = requests.Session()
-                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+5), proxies=proxy_dict)
-                
-                status = resp.status_code
-                if status != 200:
-                    if status == 403:
+                resp = proxy_manager.request("POST", f"{scheme}://{self.conf.URN}", headers=headers, fields=data, timeout=urllib3.Timeout(connect=self.conf.PROXY_TIMEOUT, read=self.conf.PROXY_TIMEOUT+5))
+                status_code = resp.status
+                if status_code != 200:
+                    if status_code == 403:
                         self.conf.lock.acquire()
                         self.conf.del_proxy(random_proxy)
                         self.conf.lock.release()
@@ -270,19 +257,16 @@ class RequestClient(threading.Thread):
                 self.conf.set_req_count()
 
             except Timeout:
-                # TODO:add threshold to check the dead proxy.
+                # TODO:add threshold to check the dead proxy. <- retries and redirects
                 self.conf.del_proxy(random_proxy)
-            except requests.exceptions.ProxyError:
-                # same
+            except urllib3.exceptions.MaxRetryError:
                 self.conf.del_proxy(random_proxy)
-            except requests.exceptions.ConnectionError:
-                # same
-                self.conf.del_proxy(random_proxy)
-
+            except Exception:
+                pass
     def get_request_context(self, url):
         random_boundary = self.conf.random_name(16)
-        headers = {"Connection": "close", "Cache-Control": "max-age=0", "Upgrade-Insecure-Requests": "1", "Origin": "https://www.nurumayu.net", "Content-Type": f"multipart/form-data; boundary=----WebKitFormBoundary{random_boundary}", "User-Agent": self.conf.random_ua(), "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-User": "?1", "Sec-Fetch-Dest": "document", "Referer": "https://www.nurumayu.net/twidouga/gettwi.php", "Accept-Encoding": "gzip, deflate", "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"}
-        data = f"------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"param\"\r\n\r\n{url}\r\n------WebKitFormBoundary{random_boundary}\r\nContent-Disposition: form-data; name=\"exec\"\r\n\r\n\xe6\x8a\xbd\xe5\x87\xba\r\n------WebKitFormBoundary{random_boundary}--\r\n"
+        headers = {"Connection": "close", "Cache-Control": "max-age=0", "Upgrade-Insecure-Requests": "1", "Origin": f"https://www.nurumayu.net", "Content-Type": f"multipart/form-data; boundary=----WebKitFormBoundary{random_boundary}", "User-Agent": self.conf.random_ua(), "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-User": "?1", "Sec-Fetch-Dest": "document", "Referer": "https://www.nurumayu.net/twidouga/gettwi.php", "Accept-Encoding": "gzip, deflate", "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"}
+        data = {"param": url, "exec": "輸出"}
         return headers, data
 
     def get_random_cookies(self):
