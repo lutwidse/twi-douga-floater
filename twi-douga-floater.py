@@ -117,7 +117,10 @@ class Config(object):
 
     # Deleter
     def del_proxy(self, proxy):
-        self.proxies.remove(proxy)
+        try:
+            self.proxies.remove(proxy)
+        except ValueError:
+            pass
 
     def del_twitter_video(self, key):
         self.twitter_videos.pop(key)
@@ -201,7 +204,7 @@ class ObserverClient(threading.Thread):
 
             for video_url, video_count in list(list(self.conf.twitter_videos.items())):
                 if self.conf.TARGET_VIEWS <= video_count:
-                    print(f"{self.conf.get_CLIENT_TEXT()} 完了: {video_url}")
+                    print(f"{self.conf.get_CLIENT_TEXT()} 完了 [ {video_url} ]")
                     self.conf.del_twitter_video(video_url)
                     self.conf.update_len_twitter_videos()
             
@@ -258,26 +261,23 @@ class RequestClient(threading.Thread):
                 status = resp.status_code
                 if status != 200:
                     if status == 403:
+                        self.conf.lock.acquire()
                         self.conf.del_proxy(random_proxy)
+                        self.conf.lock.release()
                     continue
 
                 self.set_twitter_videos_count(video_url)
                 self.conf.set_req_count()
 
             except Timeout:
-                pass
+                # TODO:add threshold to check the dead proxy.
+                self.conf.del_proxy(random_proxy)
             except requests.exceptions.ProxyError:
-                # TODO:add threshold to check the dead proxy
-                pass
+                # same
+                self.conf.del_proxy(random_proxy)
             except requests.exceptions.ConnectionError:
-                # TODO:same as ProxyError
-                pass
-            except ValueError:
-                pass
-            except IndexError:
-                pass
-            except KeyError:
-                pass
+                # same
+                self.conf.del_proxy(random_proxy)
 
     def get_request_context(self, url):
         random_boundary = self.conf.random_name(16)
