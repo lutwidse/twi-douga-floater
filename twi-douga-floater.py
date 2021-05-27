@@ -5,6 +5,8 @@ from fake_useragent import UserAgent
 import argparse
 from pathlib import Path
 
+requests.adapters.DEFAULT_RETRIES = 0
+
 parser = argparse.ArgumentParser("れ～どめ～")
 parser.add_argument("-t", "--threads", help="スレッド数", type=int, default=5, required=False)
 parser.add_argument("-p", "--proxies", help="プロキシ", type=lambda p: Path(p).absolute(), required=True)
@@ -250,7 +252,7 @@ class RequestClient(threading.Thread):
                 
                 headers, data = self.get_request_context(video_url)
                 req = requests.Session()
-                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+5), proxies=proxy_dict, max_retries=0)
+                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+5), proxies=proxy_dict)
                 
                 status = resp.status_code
                 if status != 200:
