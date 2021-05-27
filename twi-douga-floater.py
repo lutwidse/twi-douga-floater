@@ -16,6 +16,7 @@ class Config(object):
         self.URN = "www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self.PROXY_TIMEOUT = 10
+        self.OBSERVER_DELAY = 10
         self.DELAY = 10
         self.TARGET_VIEWS = 100
 
@@ -83,7 +84,7 @@ class Config(object):
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
-                self.twitter_videos[l] = [0]
+                self.twitter_videos[l] = 0
             f.close()
             self.update_len_twitter_videos()
         
@@ -192,7 +193,14 @@ class ObserverClient(threading.Thread):
 
     def run(self):
         while self.conf.progress_check():
-            time.sleep(10)
+            time.sleep(self.conf.OBSERVER_DELAY)
+
+            for video_url, video_count in list(list(self.conf.twitter_videos.items())):
+                if video_count == self.conf.TARGET_VIEWS:
+                    print(f"{self.conf.CLIENT_TEXT} 完了: {video_url}")
+                    self.conf.del_twitter_video(video_url)
+                    self.conf.update_len_twitter_videos()
+            
             req_count = self.conf.get_req_count()
             info_text = "{}{}{}".format(
                 f"{self.conf.get_CLIENT_TEXT()} リクエスト [ 送信:{req_count}件 | 残り:{self.conf.len_twitter_videos * self.conf.TARGET_VIEWS - req_count}件 ] | ",
@@ -234,13 +242,9 @@ class RequestClient(threading.Thread):
                     proxy_dict["https"] = random_proxy
                     schema = "https"
 
-                video_url, video_count = self.get_random_twitter_video_pairs()
-
                 self.lock.acquire()
-                if video_count == self.conf.TARGET_VIEWS:
-                    print(f"{self.conf.CLIENT_TEXT} 完了: {video_url}")
-                    self.conf.del_twitter_video(video_url)
-                    self.conf.update_len_twitter_videos()
+                video_url, video_count = self.get_random_twitter_video_pairs()
+                if self.conf.TARGET_VIEWS <= video_count:
                     continue
                 self.lock.release()
                 
@@ -262,6 +266,7 @@ class RequestClient(threading.Thread):
                 # TODO:add threshold to check the dead proxy
                 pass
             except requests.exceptions.ConnectionError:
+                # TODO:same as ProxyError
                 pass
             except ValueError:
                 pass
@@ -279,17 +284,17 @@ class RequestClient(threading.Thread):
     def get_random_cookies(self):
         return {"_ga": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gid": f"GA1.2.{self.conf.rrn(9)}.{self.conf.rrn(10)}", "_gat": "1", "adr_id": f"{self.conf.random_name(48)}"}
 
-    def get_random_twitter_video_pairs(self):
-        return random.choice(list(list(self.conf.twitter_videos.items())))
-
     def get_random_proxy(self):
         proxy = random.choice(self.conf.proxies)
         return proxy
 
     def set_twitter_videos_count(self, video):
         self.lock.acquire()
-        self.conf.twitter_videos[video][0] += 1
+        self.conf.twitter_videos[video] += 1
         self.lock.release()
+
+    def get_random_twitter_video_pairs(self):
+        return random.choice(list(list(self.conf.twitter_videos.items())))
 
 if __name__ == "__main__":
     conf = Config()
