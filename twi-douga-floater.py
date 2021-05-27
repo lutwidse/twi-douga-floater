@@ -5,14 +5,14 @@ from fake_useragent import UserAgent
 import argparse
 from pathlib import Path
 
-requests.adapters.DEFAULT_RETRIES = 0
-
 parser = argparse.ArgumentParser("れ～どめ～")
 parser.add_argument("-tv", "--target_views", help="目標の閲覧数", type=int, required=True)
 parser.add_argument("-t", "--threads", help="スレッド数", type=int, default=5, required=False)
 parser.add_argument("-p", "--proxies", help="プロキシ", type=lambda p: Path(p).absolute(), required=True)
 parser.add_argument("-v", "--videos", help="動画", type=lambda p: Path(p).absolute(), required=True)
 args = parser.parse_args()
+
+requests.adapters.DEFAULT_RETRIES = 5
 
 class Config(object):
     def __init__(self):
@@ -256,6 +256,7 @@ class RequestClient(threading.Thread):
                 
                 headers, data = self.get_request_context(video_url)
                 req = requests.Session()
+                req.max_redirects = 5
                 resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+5), proxies=proxy_dict)
                 
                 status = resp.status_code
@@ -270,13 +271,10 @@ class RequestClient(threading.Thread):
                 self.conf.set_req_count()
 
             except Timeout:
-                # TODO:add threshold to check the dead proxy.
                 self.conf.del_proxy(random_proxy)
             except requests.exceptions.ProxyError:
-                # same
                 self.conf.del_proxy(random_proxy)
             except requests.exceptions.ConnectionError:
-                # same
                 self.conf.del_proxy(random_proxy)
 
     def get_request_context(self, url):
