@@ -257,7 +257,8 @@ class RequestClient(threading.Thread):
                 
                 status = resp.status_code
                 if status != 200:
-                    self.conf.del_proxy(random_proxy)
+                    if status == 403:
+                        self.conf.del_proxy(random_proxy)
                     continue
 
                 self.set_twitter_videos_count(video_url)
