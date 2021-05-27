@@ -13,12 +13,11 @@ args = parser.parse_args()
 
 class Config(object):
     def __init__(self):
-        self.URL = "http://www.nurumayu.net:443/twidouga/gettwi.php"
+        self.URN = "www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self.PROXY_TIMEOUT = 10
         self.DELAY = 10
         self.TARGET_VIEWS = 100
-        self.BLOCKLISTED_THRESHOLD = 3
 
         self.req_count = 0
 
@@ -39,6 +38,8 @@ class Config(object):
 
         print(f"{self.get_CLIENT_TEXT()} プロキシを検証中…")
 
+        # TODO:try-exceptを使って簡潔にまとめる、その他の関数も適切にエラー処理を行うようにする
+
         # socks5
         pt = []
 
@@ -46,17 +47,33 @@ class Config(object):
             pt.append(threading.Thread(target=self._proxy_check_socks5, args=(proxy,)))
         for t in pt:t.start()
         for t in pt:t.join()
-
         pt.clear()
+
         for p in self.proxies:
-            if p in temp_proxies:
-                temp_proxies.remove(p)
+            _, ip_port = p.split("://")
+            if ip_port in temp_proxies:
+                temp_proxies.remove(ip_port)
 
         # http
         for proxy in temp_proxies:
             pt.append(threading.Thread(target=self._proxy_check_http, args=(proxy,)))  
         for t in pt:t.start()
         for t in pt:t.join()
+        pt.clear()
+
+        for p in self.proxies:
+            _, ip_port = p.split("://")
+            if ip_port in temp_proxies:
+                temp_proxies.remove(ip_port)
+
+        # https
+        for proxy in temp_proxies:
+            pt.append(threading.Thread(target=self._proxy_check_https, args=(proxy,)))  
+        for t in pt:t.start()
+        for t in pt:t.join()
+        pt.clear()
+        
+        temp_proxies.clear()
 
         self.update_len_proxies()
         print(f"{self.get_CLIENT_TEXT()} 検証完了 | 有効なプロキシ: {self.get_len_proxies()}個")
@@ -66,7 +83,7 @@ class Config(object):
             lines = f.readlines()
             for l in lines:
                 l = l.replace("\n", "")
-                self.twitter_videos[l] = [0, 0]
+                self.twitter_videos[l] = [0]
             f.close()
             self.update_len_twitter_videos()
         
@@ -128,14 +145,27 @@ class Config(object):
 
     def _proxy_check_http(self,proxy):
         try:
-            proxy_handler = urllib.request.ProxyHandler({"http": f"{proxy}"})
+            proxy_handler = urllib.request.ProxyHandler({"http": f"http://{proxy}"})
             opener = urllib.request.build_opener(proxy_handler)
             opener.addheaders = [('User-agent', 'Mozilla/5.0')]
             urllib.request.install_opener(opener)
             req=urllib.request.Request("http://www.google.com")
             urllib.request.urlopen(req, timeout=self.PROXY_TIMEOUT)
             
-            self.proxies.append(proxy)
+            self.proxies.append(f"http://{proxy}")
+        except Exception:
+            pass
+    
+    def _proxy_check_https(self,proxy):
+        try:
+            proxy_handler = urllib.request.ProxyHandler({"https": f"https://{proxy}"})
+            opener = urllib.request.build_opener(proxy_handler)
+            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+            urllib.request.install_opener(opener)
+            req=urllib.request.Request("https://www.google.com")
+            urllib.request.urlopen(req, timeout=self.PROXY_TIMEOUT)
+            
+            self.proxies.append(f"https://{proxy}")
         except Exception:
             pass
 
@@ -189,45 +219,48 @@ class RequestClient(threading.Thread):
                 time.sleep(random.randint(1, self.conf.DELAY))
 
                 random_proxy = self.get_random_proxy()
-                proxy_dict = {
-                    "http": random_proxy,
-                }
+                protocol, _ = random_proxy.split("://")
+                
+                proxy_dict = {}
+                schema = ""
+                if(protocol == "socks5"):
+                    proxy_dict["http"] = random_proxy
+                    proxy_dict["https"] = random_proxy
+                    schema = random.choice(["http", "https"])
+                elif(protocol == "http"):
+                    proxy_dict["http"] = random_proxy
+                    schema = "http"
+                elif(protocol == "https"):
+                    proxy_dict["https"] = random_proxy
+                    schema = "https"
 
-                key, values = self.get_random_twitter_video_pairs()
-                video_count = values[0]
-                restriction_count = values[1]
+                video_url, video_count = self.get_random_twitter_video_pairs()
 
                 self.lock.acquire()
                 if video_count == self.conf.TARGET_VIEWS:
-                    print(f"{self.conf.CLIENT_TEXT} 完了: {key}")
-                    self.conf.del_twitter_video(key)
+                    print(f"{self.conf.CLIENT_TEXT} 完了: {video_url}")
+                    self.conf.del_twitter_video(video_url)
                     self.conf.update_len_twitter_videos()
                     continue
                 self.lock.release()
                 
-                headers, data = self.get_request_context(key)
+                headers, data = self.get_request_context(video_url)
                 req = requests.Session()
-                req.max_redirects = 1024
-                resp = req.post(self.conf.URL, headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(3, 0.1), proxies=proxy_dict)
+                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+10), proxies=proxy_dict)
                 
                 status = resp.status_code
                 if status != 200:
                     self.conf.del_proxy(random_proxy)
-                    self.set_twitter_videos_restriction_count(key)
-                    if self.conf.BLOCKLISTED_THRESHOLD <= restriction_count:
-                        print(f"{self.conf.get_CLIENT_TEXT()} 動画またはプロキシのブロックを検知しました: {key}")
-                        self.conf.del_twitter_video(key)
-                        self.conf.update_len_twitter_videos()
-                        continue
                     continue
 
-                self.set_twitter_videos_count(key)
+                self.set_twitter_videos_count(video_url)
                 self.conf.set_req_count()
 
             except Timeout:
                 pass
-            except requests.ConnectionError:
-                    self.conf.del_proxy(random_proxy)
+            except requests.exceptions.ProxyError:
+                # TODO:add threshold to check the dead proxy
+                pass
             except ValueError:
                 pass
             except IndexError:
@@ -248,16 +281,12 @@ class RequestClient(threading.Thread):
         return random.choice(list(list(self.conf.twitter_videos.items())))
 
     def get_random_proxy(self):
-        return random.choice(self.conf.proxies)
+        proxy = random.choice(self.conf.proxies)
+        return proxy
 
     def set_twitter_videos_count(self, video):
         self.lock.acquire()
         self.conf.twitter_videos[video][0] += 1
-        self.lock.release()
-
-    def set_twitter_videos_restriction_count(self, video):
-        self.lock.acquire()
-        self.conf.twitter_videos[video][1] += 1
         self.lock.release()
 
 if __name__ == "__main__":
