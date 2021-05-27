@@ -246,7 +246,7 @@ class RequestClient(threading.Thread):
                 
                 headers, data = self.get_request_context(video_url)
                 req = requests.Session()
-                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+10), proxies=proxy_dict)
+                resp = req.post(url=(f"{schema}://{self.conf.URN}"), headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(self.conf.PROXY_TIMEOUT, self.conf.PROXY_TIMEOUT+5), proxies=proxy_dict, max_retries=0)
                 
                 status = resp.status_code
                 if status != 200:
@@ -260,6 +260,8 @@ class RequestClient(threading.Thread):
                 pass
             except requests.exceptions.ProxyError:
                 # TODO:add threshold to check the dead proxy
+                pass
+            except requests.exceptions.ConnectionError:
                 pass
             except ValueError:
                 pass
