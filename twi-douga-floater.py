@@ -13,7 +13,7 @@ args = parser.parse_args()
 
 class Config(object):
     def __init__(self):
-        self.URL = "https://www.nurumayu.net:443/twidouga/gettwi.php"
+        self.URL = "http://www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self.PROXY_TIMEOUT = 10
         self.DELAY = 10
@@ -22,7 +22,6 @@ class Config(object):
 
         self.req_count = 0
 
-        # TODO: Those two variables are should uppercased if they could be. on the purpose of using it as a constant.
         self.len_proxies = 0
         self.len_twitter_videos = 0
 
@@ -70,6 +69,9 @@ class Config(object):
                 self.twitter_videos[l] = [0, 0]
             f.close()
             self.update_len_twitter_videos()
+        
+        self.LEN_PROXIES = self.get_len_proxies()
+        self.LEN_TWITTER_VIDEOS = self.get_len_twitter_videos()
 
     # Getter
     def get_req_count(self):
@@ -100,7 +102,7 @@ class Config(object):
 
     # Updater
     def update_len_proxies(self):
-        self.len_proxies = len(self.len_proxies)
+        self.len_proxies = len(self.proxies)
 
     def update_len_twitter_videos(self):
         self.len_twitter_videos = len(self.twitter_videos)
@@ -162,7 +164,13 @@ class ObserverClient(threading.Thread):
         while self.conf.progress_check():
             time.sleep(10)
             req_count = self.conf.get_req_count()
-            print(f"{self.conf.get_CLIENT_TEXT()} リクエスト:{req_count}件 | 残り:{self.conf.len_twitter_videos * self.conf.TARGET_VIEWS - req_count}件 | 動画: {self.conf.get_len_twitter_videos()}個 | プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.len_proxies - self.conf.get_len_proxies()}個 ]")
+            info_text = "{}{}{}".format(
+                f"{self.conf.get_CLIENT_TEXT()} リクエスト [ 送信:{req_count}件 | 残り:{self.conf.len_twitter_videos * self.conf.TARGET_VIEWS - req_count}件 ] | ",
+                f"動画 [ 完了:{self.conf.LEN_TWITTER_VIDEOS - self.conf.get_len_twitter_videos()}個 | 残り:{self.conf.get_len_twitter_videos()}個 ] |",
+                f"プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.LEN_PROXIES - self.conf.get_len_proxies()}個 ]"
+                )
+            
+            print(info_text)
 
             if (self.conf.get_len_proxies() <= 0) or (self.conf.get_len_twitter_videos() <= 0):
                 print(f"{self.conf.get_CLIENT_TEXT()} 終了")
@@ -186,24 +194,28 @@ class RequestClient(threading.Thread):
                 }
 
                 key, values = self.get_random_twitter_video_pairs()
-                videos_count = values[0]
+                video_count = values[0]
                 restriction_count = values[1]
-                if videos_count > self.conf.TARGET_VIEWS:
+
+                self.lock.acquire()
+                if video_count == self.conf.TARGET_VIEWS:
                     print(f"{self.conf.CLIENT_TEXT} 完了: {key}")
                     self.conf.del_twitter_video(key)
+                    self.conf.update_len_twitter_videos()
                     continue
+                self.lock.release()
                 
                 headers, data = self.get_request_context(key)
                 req = requests.Session()
                 req.max_redirects = 1024
-                resp = req.post(self.conf.URL, headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(5, 10), proxies=proxy_dict)
+                resp = req.post(self.conf.URL, headers=headers, cookies=self.get_random_cookies(), data=data, timeout=(3, 0.1), proxies=proxy_dict)
                 
                 status = resp.status_code
                 if status != 200:
                     self.conf.del_proxy(random_proxy)
                     self.set_twitter_videos_restriction_count(key)
                     if self.conf.BLOCKLISTED_THRESHOLD <= restriction_count:
-                        print(f"{self.conf.get_CLIENT_TEXT()} 動画のブロックを検知しました: {key}")
+                        print(f"{self.conf.get_CLIENT_TEXT()} 動画またはプロキシのブロックを検知しました: {key}")
                         self.conf.del_twitter_video(key)
                         self.conf.update_len_twitter_videos()
                         continue
