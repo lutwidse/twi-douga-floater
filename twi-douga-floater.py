@@ -198,8 +198,8 @@ class ObserverClient(threading.Thread):
             time.sleep(self.conf.OBSERVER_DELAY)
 
             for video_url, video_count in list(list(self.conf.twitter_videos.items())):
-                if video_count == self.conf.TARGET_VIEWS:
-                    print(f"{self.conf.CLIENT_TEXT} 完了: {video_url}")
+                if self.conf.TARGET_VIEWS <= video_count:
+                    print(f"{self.conf.get_CLIENT_TEXT()} 完了: {video_url}")
                     self.conf.del_twitter_video(video_url)
                     self.conf.update_len_twitter_videos()
             
