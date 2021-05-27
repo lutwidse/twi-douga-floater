@@ -8,6 +8,7 @@ from pathlib import Path
 requests.adapters.DEFAULT_RETRIES = 0
 
 parser = argparse.ArgumentParser("れ～どめ～")
+parser.add_argument("-tv", "--target_views", help="目標の閲覧数", type=int, required=True)
 parser.add_argument("-t", "--threads", help="スレッド数", type=int, default=5, required=False)
 parser.add_argument("-p", "--proxies", help="プロキシ", type=lambda p: Path(p).absolute(), required=True)
 parser.add_argument("-v", "--videos", help="動画", type=lambda p: Path(p).absolute(), required=True)
@@ -15,12 +16,13 @@ args = parser.parse_args()
 
 class Config(object):
     def __init__(self):
+        self.lock = threading.Lock()
         self.URN = "www.nurumayu.net:443/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self.PROXY_TIMEOUT = 10
         self.OBSERVER_DELAY = 10
-        self.DELAY = 10
-        self.TARGET_VIEWS = 100
+        self.DELAY = 100
+        self.TARGET_VIEWS = args.target_views
 
         self.req_count = 0
 
@@ -205,8 +207,8 @@ class ObserverClient(threading.Thread):
             
             req_count = self.conf.get_req_count()
             info_text = "{}{}{}".format(
-                f"{self.conf.get_CLIENT_TEXT()} リクエスト [ 送信:{req_count}件 | 残り:{self.conf.len_twitter_videos * self.conf.TARGET_VIEWS - req_count}件 ] | ",
-                f"動画 [ 完了:{self.conf.LEN_TWITTER_VIDEOS - self.conf.get_len_twitter_videos()}個 | 残り:{self.conf.get_len_twitter_videos()}個 ] |",
+                f"{self.conf.get_CLIENT_TEXT()} リクエスト [ 送信:{req_count}件 | 残り:{self.conf.LEN_TWITTER_VIDEOS * self.conf.TARGET_VIEWS - req_count}件 ] | ",
+                f"動画 [ 完了:{self.conf.LEN_TWITTER_VIDEOS - self.conf.get_len_twitter_videos()}個 | 残り:{self.conf.get_len_twitter_videos()}個 ] | ",
                 f"プロキシ [ 有効:{self.conf.get_len_proxies()}個 | 規制:{self.conf.LEN_PROXIES - self.conf.get_len_proxies()}個 ]"
                 )
             
@@ -218,9 +220,8 @@ class ObserverClient(threading.Thread):
                 exit(1)
 
 class RequestClient(threading.Thread):
-    def __init__(self, lock, conf):
+    def __init__(self, conf):
         threading.Thread.__init__(self)
-        self.lock = lock
         self.conf = conf
 
     def run(self):
@@ -244,11 +245,11 @@ class RequestClient(threading.Thread):
                     proxy_dict["https"] = random_proxy
                     schema = "https"
 
-                self.lock.acquire()
+                self.conf.lock.acquire()
                 video_url, video_count = self.get_random_twitter_video_pairs()
                 if self.conf.TARGET_VIEWS <= video_count:
                     continue
-                self.lock.release()
+                self.conf.lock.release()
                 
                 headers, data = self.get_request_context(video_url)
                 req = requests.Session()
@@ -291,9 +292,9 @@ class RequestClient(threading.Thread):
         return proxy
 
     def set_twitter_videos_count(self, video):
-        self.lock.acquire()
+        self.conf.lock.acquire()
         self.conf.twitter_videos[video] += 1
-        self.lock.release()
+        self.conf.lock.release()
 
     def get_random_twitter_video_pairs(self):
         return random.choice(list(list(self.conf.twitter_videos.items())))
@@ -304,5 +305,5 @@ if __name__ == "__main__":
     oc.start()
     lock = threading.Lock()
     for _ in range(args.threads):
-        rc = RequestClient(lock, conf)
+        rc = RequestClient(conf)
         rc.start()
