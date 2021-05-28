@@ -13,7 +13,9 @@ twi-douga のランキングを操作できるスクリプト
 `$ python twi-douga-floater.py -tv 50 -p proxies.txt -v videos.txt`
 - コマンドライン引数
   - --target_views 目標の閲覧数
-  - --proxies プロキシ (対応プロトコル http/https socks5)
+  - --proxies プロキシ
+    - http/https
+    - socks4/socks5
   - --videos 動画
 - オプション
     - --threads スレッド数
