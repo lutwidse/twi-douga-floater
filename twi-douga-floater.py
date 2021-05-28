@@ -1,4 +1,4 @@
-import requests, urllib3.request, urllib3.contrib, socket, socks
+import requests, urllib3.request, urllib3.contrib.socks, socket, socks
 from requests import Timeout
 from urllib3.exceptions import MaxRetryError
 import random, string, datetime, time, threading
@@ -18,7 +18,7 @@ args = parser.parse_args()
 class Config(object):
     def __init__(self):
         self.lock = threading.Lock()
-        self.URN = "www.nurumayu.net:443/twidouga/gettwi.php"
+        self.URN = "www.nurumayu.net:PORT/twidouga/gettwi.php"
         self.CLIENT_TEXT = f"[twi-douga-floater]"
         self._PROXY_TEST_UA = {"User-agent": "Mozilla/5.0"}
         self.PROXY_TIMEOUT = 10
@@ -147,7 +147,13 @@ class Config(object):
             proxy_manager.request("GET", "http://www.google.com", headers=self._PROXY_TEST_UA, timeout=urllib3.Timeout(connect=self.PROXY_TIMEOUT, read=self.PROXY_TIMEOUT+5))
             
             self.proxies.append(proxy)
-        except Exception:
+        except Timeout:
+                pass
+        except urllib3.exceptions.MaxRetryError:
+            pass
+        except urllib3.exceptions.NewConnectionError:
+            pass
+        except ValueError:
             pass
 
     def _proxy_check_http_https(self, scheme, ip_port):
@@ -157,7 +163,13 @@ class Config(object):
             proxy_manager.request("GET", f"{scheme}://www.google.com", headers=self._PROXY_TEST_UA, timeout=urllib3.Timeout(connect=self.PROXY_TIMEOUT, read=self.PROXY_TIMEOUT+5))
             
             self.proxies.append(proxy)
-        except Exception:
+        except Timeout:
+                pass
+        except urllib3.exceptions.MaxRetryError:
+            pass
+        except urllib3.exceptions.NewConnectionError:
+            pass
+        except ValueError:
             pass
 
     def _proxy_del_unchecked_proxies(self, unchecked_proxies):
@@ -227,15 +239,19 @@ class RequestClient(threading.Thread):
                 proxy_manager = None
 
                 scheme = ""
+                port = "0"
                 if protocol == "socks4" or protocol == "socks5":
                     proxy_manager = urllib3.contrib.socks.SOCKSProxyManager(random_proxy)
-                    scheme = "http"
-                elif protocol == "http":
-                    scheme = "http"
-                    proxy_manager = urllib3.ProxyManager(random_proxy)
-                elif protocol == "https":
                     scheme = "https"
+                    port = "443"
+                elif protocol == "http":
                     proxy_manager = urllib3.ProxyManager(random_proxy)
+                    scheme = "http"
+                    port = "80"
+                elif protocol == "https":
+                    proxy_manager = urllib3.ProxyManager(random_proxy)
+                    scheme = "https"
+                    port = "443"
 
                 self.conf.lock.acquire()
                 video_url, video_count = self.get_random_twitter_video_pairs()
@@ -244,7 +260,11 @@ class RequestClient(threading.Thread):
                 self.conf.lock.release()
                 
                 headers, data = self.get_request_context(video_url)
-                resp = proxy_manager.request("POST", f"{scheme}://{self.conf.URN}", headers=headers, fields=data, timeout=urllib3.Timeout(connect=self.conf.PROXY_TIMEOUT, read=self.conf.PROXY_TIMEOUT+5))
+                headers = headers.update(self.get_random_cookies())
+
+                i, j = self.conf.URN.split("PORT")
+
+                resp = proxy_manager.request("POST", f"{scheme}://{i}{port}{j}", headers=headers, fields=data, timeout=urllib3.Timeout(connect=self.conf.PROXY_TIMEOUT, read=self.conf.PROXY_TIMEOUT+5), retries=urllib3.Retry(5, redirect=5))
                 status_code = resp.status
                 if status_code != 200:
                     if status_code == 403:
@@ -257,12 +277,12 @@ class RequestClient(threading.Thread):
                 self.conf.set_req_count()
 
             except Timeout:
-                # TODO:add threshold to check the dead proxy. <- retries and redirects
                 self.conf.del_proxy(random_proxy)
             except urllib3.exceptions.MaxRetryError:
                 self.conf.del_proxy(random_proxy)
-            except Exception:
-                pass
+            except Exception as e:
+                print(e)
+                
     def get_request_context(self, url):
         random_boundary = self.conf.random_name(16)
         headers = {"Connection": "close", "Cache-Control": "max-age=0", "Upgrade-Insecure-Requests": "1", "Origin": f"https://www.nurumayu.net", "Content-Type": f"multipart/form-data; boundary=----WebKitFormBoundary{random_boundary}", "User-Agent": self.conf.random_ua(), "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-User": "?1", "Sec-Fetch-Dest": "document", "Referer": "https://www.nurumayu.net/twidouga/gettwi.php", "Accept-Encoding": "gzip, deflate", "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"}
