@@ -1,4 +1,4 @@
-import argparse, random, string, datetime, time, threading
+import argparse, sys, random, string, datetime, time, threading
 import requests, urllib3.request, urllib3.contrib.socks, socket, socks
 from pathlib import Path
 from requests import Timeout
@@ -225,7 +225,7 @@ class ObserverClient(threading.Thread):
 
         print(f"{self.conf.get_CLIENT_TEXT()} 終了")
         input()
-        exit(1)
+        sys.exit(0)
 
 class RequestClient(threading.Thread):
     def __init__(self, conf, lock):
