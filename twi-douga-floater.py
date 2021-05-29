@@ -288,6 +288,8 @@ class RequestClient(threading.Thread):
             except KeyError:
                 # ぬるぽ ガッ
                 pass
+            except TypeError:
+                pass
                 
     def get_request_context(self, url):
         random_boundary = self.conf.random_name(16)
